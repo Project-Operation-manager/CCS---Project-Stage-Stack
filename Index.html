@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Project Stage Grid — Clean Directory UI</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+  /* ===== Theme (aligned to your screenshot) ===== */
+  :root{
+    --bg:#F8FAFC;
+    --panel:#FFFFFF;
+    --ink:#111827;
+    --muted:#6B7280;
+    --grid:#E5E7EB;
+    --grid-strong:#D1D5DB;
+    --primary:#6D28D9;
+    --primary-600:#5B21B6;
+    --ring:0 0 0 3px rgba(109,40,217,.18);
+    --success-bg:#D1FAE5;
+    --success-text:#065F46;
+    --chip:#EEF2FF;
+    --chip-b:#C7D2FE;
+    --radius:12px;
+    --h:48px; /* control height */
+  }
+
+  html,body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,Segoe UI,Arial;font-size:14px}
+  .container{max-width:1200px;margin:0 auto;padding:24px 20px 40px}
+
+  /* ===== Top bar (title + primary button) ===== */
+  .topbar{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+  .title{font-size:24px;font-weight:600;letter-spacing:-.01em}
+  .topbar .spacer{flex:1}
+  .btn{height:var(--h);padding:0 16px;border:1px solid var(--grid);border-radius:10px;background:#fff;cursor:pointer}
+  .btn.primary{background:var(--primary);color:#fff;border-color:var(--primary)}
+  .btn.primary:hover{background:var(--primary-600)}
+  .btn:focus{outline:none;box-shadow:var(--ring)}
+
+  /* ===== Filters row ===== */
+  .filters{
+    display:flex;gap:12px;align-items:center;flex-wrap:wrap;
+    background:var(--panel);border:1px solid var(--grid);border-radius:var(--radius);
+    padding:12px; margin-bottom:16px;
+  }
+  .field{display:flex;align-items:center;gap:8px}
+  .field label{font-size:12px;color:var(--muted)}
+  input[type="file"], select, input[type="search"]{
+    height:var(--h); min-width:220px; padding:0 12px; border:1px solid var(--grid);
+    border-radius:10px; background:#fff; color:var(--ink);
+  }
+  input[type="search"]{min-width:320px}
+  .filters .spacer{flex:1}
+  .iconbtn{height:var(--h);aspect-ratio:1/1;display:inline-grid;place-items:center}
+  .tag{display:inline-flex;align-items:center;gap:6px;padding:2px 8px;border-radius:999px;background:var(--chip);border:1px solid var(--chip-b);font-size:12px}
+  .count{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 6px;border-radius:999px;background:#4F46E5;color:#fff;font-weight:600;font-size:12px}
+
+  /* Hide-empty in settings, but keep the original checkbox for logic */
+  #hideEmptyStages{display:none}
+
+  /* ===== Cards & table ===== */
+  details.card{background:var(--panel);border:1px solid var(--grid);border-radius:var(--radius);margin-top:12px}
+  details.card[open]{border-color:var(--grid-strong)}
+  summary.projHeader{list-style:none;display:flex;align-items:center;gap:12px;padding:14px 16px;cursor:default}
+  summary.projHeader::-webkit-details-marker{display:none}
+  .chip{background:#F3F4F6;border:1px solid #E5E7EB;border-radius:999px;padding:2px 8px;font-size:12px}
+  .chip.sn{font-weight:600}
+  .badge{display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:8px;font-size:12px;font-weight:600}
+  .badge.success{background:var(--success-bg);color:var(--success-text)}
+  .body{padding:0 16px 16px}
+  .gridwrap{overflow:auto;border:1px solid var(--grid);border-radius:10px}
+
+  table{border-collapse:collapse;width:100%;background:#fff}
+  thead th{background:#F3F4F6;color:#111827}
+  th,td{border:1px solid var(--grid);padding:10px 10px;text-align:center;white-space:nowrap}
+  .leftth{position:sticky;left:0;background:#F3F4F6;text-align:left;z-index:1}
+  .lefttd{position:sticky;left:0;background:#fff;text-align:left}
+  tbody tr:hover td{background:#FAFAFA}
+
+  /* Filled cells: color only */
+  td.filled{font-size:0; line-height:0; color:transparent;}
+  td.filled::after{content:""; display:inline-block; width:100%; height:20px}
+
+  /* Toggle switch (subtler) */
+  .switch{position:relative;display:inline-block;width:46px;height:26px}
+  .switch input{display:none}
+  .slider{position:absolute;inset:0;background:#E5E7EB;border:1px solid #D1D5DB;border-radius:999px;cursor:pointer;transition:background .2s}
+  .slider:before{content:"";position:absolute;height:20px;width:20px;left:3px;top:50%;transform:translateY(-50%);background:#fff;border-radius:50%;box-shadow:0 1px 2px rgba(0,0,0,.2);transition:transform .2s}
+  input:checked + .slider{background:var(--primary);border-color:var(--primary)}
+  input:checked + .slider:before{transform:translate(20px,-50%)}
+
+  /* ===== Modal dialog (for display settings) ===== */
+  dialog::backdrop{background:rgba(15,23,42,.35)}
+  dialog{
+    border:none;border-radius:16px;padding:0;max-width:520px;width:92%;
+    box-shadow:0 20px 50px rgba(0,0,0,.2);overflow:hidden
+  }
+  .dlg-head{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--grid);background:var(--panel)}
+  .dlg-body{padding:16px;background:var(--panel)}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 0}
+  .dlg-actions{display:flex;justify-content:flex-end;gap:10px;padding:12px 16px;border-top:1px solid var(--grid);background:var(--panel)}
+</style>
+</head>
+<body>
+  <div class="container">
+    <!-- Top bar -->
+    <div class="topbar">
+      <div class="title">Directory</div>
+      <div class="spacer"></div>
+      <button class="btn primary" id="addBtn">Add project</button>
+    </div>
+
+    <!-- Filters bar -->
+    <div class="filters">
+      <div class="field">
+        <label>Data</label>
+        <input id="file" type="file" accept=".xlsx,.xls,.csv" />
+      </div>
+
+      <button id="build" class="btn primary" type="button" title="Build grid from file">Build</button>
+
+      <div class="field">
+        <label>Team</label>
+        <select id="teamFilter"><option value="__ALL__">All teams</option></select>
+      </div>
+
+      <div class="field" id="statusWrap" style="display:none">
+        <label>Status</label>
+        <select id="statusFilter"><option value="__ALL__">All statuses</option></select>
+      </div>
+
+      <input id="projectFilter" type="search" placeholder="Search projects (CODE — Title)…" list="projectSuggestions" />
+      <datalist id="projectSuggestions"></datalist>
+
+      <div class="spacer"></div>
+
+      <span class="tag" id="activeFiltersTag" style="display:none">
+        Status <span class="count" id="activeCount">0</span>
+      </span>
+
+      <button class="btn iconbtn" id="settingsBtn" title="Display settings">⚙</button>
+      <button class="btn" id="expandAll" type="button">Expand all</button>
+      <button class="btn" id="collapseAll" type="button">Collapse all</button>
+
+      <!-- keep for logic, hidden; controlled by dialog -->
+      <input type="checkbox" id="hideEmptyStages" />
+    </div>
+
+    <div id="output"></div>
+  </div>
+
+  <!-- Settings dialog -->
+  <dialog id="settingsDlg">
+    <div class="dlg-head">
+      <strong style="font-weight:600">Display settings</strong>
+      <div class="spacer"></div>
+      <button class="btn iconbtn" id="closeDlg" aria-label="Close">✕</button>
+    </div>
+    <div class="dlg-body">
+      <div class="row">
+        <div>
+          <div style="font-weight:600">Hide empty stages</div>
+          <div style="font-size:12px;color:var(--muted)">Remove stage rows that have no dates in a project.</div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="hideEmptyToggle">
+          <span class="slider"></span>
+        </label>
+      </div>
+    </div>
+    <div class="dlg-actions">
+      <button class="btn" id="cancelDlg">Cancel</button>
+      <button class="btn primary" id="applyDlg">Apply</button>
+    </div>
+  </dialog>
+
+<script>
+/* =================== DATA/LOGIC (unchanged where possible) =================== */
+const STAGE_ROWS = [
+  'CD1','CD2','CD3','CD4','CD5',
+  'SD1','SD2','SD3','SD4',
+  'MC','AD',
+  'DD1','DD2','DD3','DD4',
+  'TD1','TD2','TD3','TD4','TD5',
+  'WD20','WD40','WD60','WD80','WD100',
+  'DC','CO'
+];
+
+const $ = sel => document.querySelector(sel);
+function excelDateToJSDate(v){
+  if (v===null || v===undefined || v==='') return null;
+  if (v instanceof Date) return v;
+  if (typeof v === 'number'){ const d=new Date(Math.round((v-25569)*86400*1000)); return isNaN(d)?null:d; }
+  const s=String(v).trim(); if(!s) return null;
+  const t=new Date(s); if(!isNaN(t)) return t;
+  const m=s.match(/^(\d{4})[-\/]?(\d{2})[-\/]?(\d{2})$/); if(m){ const d=new Date(+m[1],+m[2]-1,+m[3]); return isNaN(d)?null:d; }
+  return null;
+}
+const iso = d => !d ? '' : new Date(d.getFullYear(),d.getMonth(),d.getDate()).toISOString().slice(0,10);
+const normStage = raw => raw==null ? '' : String(raw).toUpperCase().replace(/[\s_\-]/g,'');
+function escapeHtml(s){return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+
+function detectColumns(headers){
+  const norm = h => h.toLowerCase().replace(/[\s_\-]/g,'');
+  const pick = cands => headers.find(h=>cands.includes(norm(h))) ||
+                        headers.find(h=>cands.some(c=>norm(h).includes(c))) || null;
+
+  const want = {
+    code:   pick(['projectcode','code','projcode','pcode']),
+    title:  pick(['projecttitle','projectname','title','name']),
+    team:   pick(['team','group','assignedto']),
+    stage:  pick(['stage','milestone','phase','stagecode','projectstage']),
+    end:    pick(['enddate','duedate','deadline','targetdate','finishdate','completiondate']),
+    status: pick(['projectstatus','status','state','health','progress']) // optional
+  };
+  const missing = ['code','title','team','stage','end'].filter(k=>!want[k]);
+  if (missing.length){
+    throw new Error('Missing headers: '+missing.join(', ')+'. Required: Project Code, Project Title, Team, Stage, End Date.');
+  }
+  return want;
+}
+
+function colorForDate(dateISO){
+  let h = 0; for (let i=0;i<dateISO.length;i++){ h = (h*31 + dateISO.charCodeAt(i)) >>> 0; }
+  return `hsl(${h%360} 65% 82%)`;
+}
+
+let sheetRows=[], headers=[];
+let viewProjects=[];
+let seq=0; const uid=()=>('p_'+(++seq));
+
+/* -------- File ingest -------- */
+$('#file').addEventListener('change', (e)=>{
+  const f=e.target.files&&e.target.files[0];
+  if(!f){ sheetRows=[]; headers=[]; return; }
+  const r=new FileReader();
+  r.onload = evt=>{
+    try{
+      const wb=XLSX.read(evt.target.result,{type:'array'});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const rows=XLSX.utils.sheet_to_json(ws,{defval:"",raw:true});
+      if(!rows.length){ alert('No data found in the first sheet.'); return; }
+      sheetRows=rows; headers=Object.keys(rows[0]);
+    }catch(err){ alert('Failed to parse file: ' + (err?.message||err)); }
+  };
+  r.readAsArrayBuffer(f);
+});
+
+/* -------- Build -------- */
+$('#build').addEventListener('click', ()=>{
+  if(!sheetRows.length){ alert('Load a file first.'); return; }
+
+  let cols; try{ cols=detectColumns(headers); }catch(e){ alert(e.message); return; }
+  const dupeRule='latest';
+  const hideNoEnd=false;
+
+  const projMap=new Map();
+  for(const row of sheetRows){
+    const code  = String(row[cols.code]??'').trim() || '(No Code)';
+    const title = String(row[cols.title]??'').trim()||'(No Title)';
+    const team  = String(row[cols.team]??'').trim() || '(No Team)';
+    const stage = normStage(row[cols.stage]);
+    if(!STAGE_ROWS.includes(stage)) continue;
+
+    const d=excelDateToJSDate(row[cols.end]); const endISO=iso(d);
+    const status = cols.status ? String(row[cols.status]??'').trim() : '';
+
+    const key=code+'||'+title+'||'+team;
+    if(!projMap.has(key)) projMap.set(key,{code,title,team,rows:[]});
+    projMap.get(key).rows.push({stage,endISO,status});
+  }
+
+  viewProjects=[];
+  for(const {code,title,team,rows} of projMap.values()){
+    const stageToDates=new Map(); for(const st of STAGE_ROWS) stageToDates.set(st,new Set());
+    for(const r of rows){ if(r.endISO) stageToDates.get(r.stage).add(r.endISO); }
+
+    for(const st of STAGE_ROWS){
+      const set=stageToDates.get(st);
+      if(set.size>1){
+        const arr=Array.from(set).sort();
+        set.clear();
+        set.add(dupeRule==='latest' ? arr[arr.length-1] : arr[0]);
+      }
+    }
+
+    const dates=Array.from(new Set([].concat(...Array.from(stageToDates.values()).map(s=>Array.from(s))))).sort();
+
+    // status = latest non-empty by date
+    let projStatus = '';
+    const dated = rows.filter(r=>r.status);
+    if (dated.length){
+      const withSort = dated.slice().sort((a,b)=>(a.endISO||'').localeCompare(b.endISO||''));
+      projStatus = withSort[withSort.length-1].status || '';
+    }
+
+    viewProjects.push({id:uid(),code,title,team,status:projStatus,dates,stageToDates,
+      displayLine:`${code} — ${title}`});
+  }
+
+  // Team dropdown
+  const teamSel=$('#teamFilter');
+  const teams=Array.from(new Set(viewProjects.map(p=>p.team))).sort((a,b)=>a.localeCompare(b));
+  teamSel.innerHTML='<option value="__ALL__">All teams</option>'+teams.map(t=>`<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
+  teamSel.onchange = () => applyFilterAndRender();
+
+  // Status dropdown
+  const statusWrap = $('#statusWrap');
+  const statusSel  = $('#statusFilter');
+  const statuses = Array.from(new Set(viewProjects.map(p=>p.status).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
+  if (statuses.length){
+    statusSel.innerHTML = '<option value="__ALL__">All statuses</option>' +
+      statuses.map(s=>`<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
+    statusWrap.style.display = 'flex';
+    statusSel.onchange = () => applyFilterAndRender();
+  } else {
+    statusWrap.style.display = 'none';
+    statusSel.onchange = null;
+    statusSel.innerHTML = '<option value="__ALL__">All statuses</option>';
+  }
+
+  // Project datalist
+  const dl = $('#projectSuggestions');
+  const lines = Array.from(new Set(viewProjects.map(p=>p.displayLine))).sort((a,b)=>a.localeCompare(b));
+  dl.innerHTML = lines.map(s=>`<option value="${escapeHtml(s)}">`).join('');
+  const pf = $('#projectFilter');
+  pf.value = '';
+  pf.addEventListener('input', ()=> applyFilterAndRender());
+
+  // Sync dialog toggle to hidden checkbox
+  $('#hideEmptyToggle').checked = $('#hideEmptyStages').checked;
+
+  applyFilterAndRender();
+});
+
+/* -------- Filters + render (serial numbers preserved) -------- */
+$('#expandAll').addEventListener('click', ()=>toggleAll(true));
+$('#collapseAll').addEventListener('click', ()=>toggleAll(false));
+
+function applyFilterAndRender(){
+  if(!viewProjects.length) return;
+  const teamVal   = $('#teamFilter').value;
+  const statusWrap= $('#statusWrap');
+  const statusSel = $('#statusFilter');
+  const statusVal = statusWrap && statusWrap.style.display!=='none' ? statusSel.value : '__ALL__';
+  const textVal   = $('#projectFilter').value.trim().toLowerCase();
+
+  let list = viewProjects.slice();
+  if(teamVal !== '__ALL__'){ list = list.filter(p=>p.team===teamVal); }
+  if(statusVal !== '__ALL__'){ list = list.filter(p=>p.status===statusVal); }
+  if(textVal){
+    list = list.filter(p=>{
+      const combined = (p.displayLine||'').toLowerCase();
+      return combined.includes(textVal)
+          || (p.code||'').toLowerCase().includes(textVal)
+          || (p.title||'').toLowerCase().includes(textVal);
+    });
+  }
+
+  // show active filters badge (only status for now)
+  const badge = $('#activeFiltersTag');
+  if(statusVal !== '__ALL__'){ badge.style.display='inline-flex'; $('#activeCount').textContent = '1'; }
+  else { badge.style.display='none'; }
+
+  list.sort((a,b)=> a.team.localeCompare(b.team) || a.code.localeCompare(b.code));
+
+  const out=$('#output'); out.innerHTML='';
+  list.forEach((p, idx) => { out.appendChild(renderProjectCard(p, idx+1)); });
+}
+
+function renderProjectCard(p, sn){
+  const details=document.createElement('details');
+  details.className='card';
+
+  const summary=document.createElement('summary');
+  summary.className='projHeader';
+
+  const swId='sw_'+p.id;
+  summary.innerHTML =
+      '<span class="chip sn">#'+sn+'</span>'
+    + '<span class="chip">Project</span><b>'+escapeHtml(p.displayLine)+'</b>'
+    + '<span class="chip">Team</span><b>'+escapeHtml(p.team)+'</b>'
+    + (p.status ? '<span class="badge success">'+escapeHtml(p.status)+'</span>' : '')
+    + '<div style="margin-left:auto;display:flex;align-items:center;gap:8px">'
+    +   '<span style="font-size:12px;color:var(--muted)">Show</span>'
+    +   '<label class="switch"><input type="checkbox" id="'+swId+'"><span class="slider"></span></label>'
+    + '</div>';
+  details.appendChild(summary);
+
+  const body=document.createElement('div'); body.className='body';
+
+  const dateColor = new Map(); for (const d of p.dates){ dateColor.set(d, colorForDate(d)); }
+
+  const wrap=document.createElement('div'); wrap.className='gridwrap';
+  const table=document.createElement('table');
+
+  const thead=document.createElement('thead'); const tr1=document.createElement('tr');
+  let hdr = '<th class="leftth" style="min-width:160px">Project Stage</th>';
+  for (let i=0;i<p.dates.length;i++){ hdr += '<th style="min-width:90px">End</th>'; }
+  tr1.innerHTML = hdr; thead.appendChild(tr1); table.appendChild(thead);
+
+  const tbody=document.createElement('tbody');
+  const hideEmpty = $('#hideEmptyStages')?.checked;
+
+  for(const st of STAGE_ROWS){
+    const set=p.stageToDates.get(st)||new Set();
+    if (hideEmpty && set.size===0) continue;
+
+    const tr=document.createElement('tr');
+    tr.innerHTML = '<td class="lefttd">'+st+'</td>';
+
+    for(const d of p.dates){
+      const td=document.createElement('td');
+      td.textContent = '';
+      td.removeAttribute('title');
+      if(set.has(d)){
+        td.classList.add('filled');
+        td.style.background = dateColor.get(d);
+        td.style.borderColor = '#CBD5E1';
+      }
+      tr.appendChild(td);
+    }
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+  body.appendChild(wrap);
+  details.appendChild(body);
+
+  const sw = summary.querySelector('#'+swId);
+  sw.addEventListener('change', ()=>{ details.open = sw.checked; });
+  details.addEventListener('toggle', ()=>{ sw.checked = details.open; });
+
+  return details;
+}
+
+function toggleAll(open){
+  document.querySelectorAll('details.card').forEach(d => { d.open = !!open; });
+  document.querySelectorAll('details.card summary input[type="checkbox"]').forEach(sw => { sw.checked = !!open; });
+}
+
+/* -------- Dialog plumbing -------- */
+const dlg = $('#settingsDlg');
+$('#settingsBtn').addEventListener('click', ()=>{ $('#hideEmptyToggle').checked = $('#hideEmptyStages').checked; dlg.showModal(); });
+$('#closeDlg').addEventListener('click', ()=> dlg.close());
+$('#cancelDlg').addEventListener('click', ()=> dlg.close());
+$('#applyDlg').addEventListener('click', ()=>{
+  $('#hideEmptyStages').checked = $('#hideEmptyToggle').checked;
+  dlg.close();
+  applyFilterAndRender();
+});
+</script>
+</body>
+</html>
